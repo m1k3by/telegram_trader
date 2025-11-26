@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { trendStore } from './trendAnalyzer.js';
+import { randomGif } from './gifs.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import os from 'os';
 
@@ -119,7 +120,30 @@ io.on('connection', (socket) => {
   
   // Send current stats on connect
   socket.emit('stats', stats);
-  socket.emit('events', recentEvents.slice(-20));
+
+  // Prepare events for this client: retroactively attach win GIF for recent positive closes
+    try {
+    const eventsForClient = recentEvents.slice(-50).map(ev => {
+      if (ev && ev.type === 'trade' && ev.data) {
+        try {
+          let p = ev.data.profit;
+          if (typeof p === 'string') p = parseFloat(p.replace(/[€$,]/g, ''));
+          if (!isNaN(p) && ev.data.direction === 'CLOSE' && p > 0 && !ev.data.gifUrl) {
+            // create a shallow copy to avoid mutating stored recentEvents
+            const copied = { ...ev, data: { ...ev.data, gifUrl: randomGif() } };
+            return copied;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      return ev;
+    });
+
+    socket.emit('events', eventsForClient.slice(-20));
+  } catch (e) {
+    socket.emit('events', recentEvents.slice(-20));
+  }
   socket.emit('serviceStatus', serviceStatus);
   
   // Send server stats
@@ -252,6 +276,17 @@ export function broadcastTrade(trade) {
       
       console.log(`📊 Stats updated: Profit ${profitValue.toFixed(2)}€ | Total: +${stats.totalProfit.toFixed(2)}€ / -${stats.totalLoss.toFixed(2)}€ | Net: ${stats.netProfit.toFixed(2)}€`);
     }
+
+  // If this is a closed position with positive profit, attach a small win GIF URL
+  try {
+    let _profit = trade.profit;
+    if (typeof _profit === 'string') _profit = parseFloat(_profit.replace(/[€$,]/g, ''));
+    if (!isNaN(_profit) && trade.direction === 'CLOSE' && _profit > 0) {
+      trade.gifUrl = randomGif();
+    }
+  } catch (e) {
+    // ignore parsing errors
+  }
   }
   
   saveStats();

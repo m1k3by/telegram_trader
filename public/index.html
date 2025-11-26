@@ -414,6 +414,33 @@
             color: #ef4444;
             font-weight: bold;
         }
+        
+        /* Win GIF Animation */
+        @keyframes winPop {
+            0% {
+                transform: scale(0.3) rotate(-10deg);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.1) rotate(5deg);
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+        
+        .win-gif-container {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%);
+            padding: 15px;
+            border-radius: 12px;
+            border: 2px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .win-gif-container:hover {
+            transform: scale(1.02);
+            transition: transform 0.3s ease;
+        }
     </style>
 </head>
 <body>
@@ -669,6 +696,20 @@
                         ${data.dealId ? `<div class="signal-detail"><strong>Deal ID:</strong> ${data.dealId}</div>` : ''}
                         ${data.reason && data.reason !== 'SUCCESS' ? `<div class="signal-detail" style="grid-column: 1/-1;"><strong>Grund:</strong> ${data.reason}</div>` : ''}
                         ${data.message && data.message !== data.reason && !data.message.includes('Trade executed via IG Markets API') ? `<div class="signal-detail" style="grid-column: 1/-1;"><strong>Nachricht:</strong> ${data.message}</div>` : ''}
+                        ${data.gifUrl && data.profit !== undefined && data.profit > 0 ? `
+                            <div class="signal-detail win-gif-container" style="grid-column: 1/-1; text-align: center; margin-top: 15px; animation: winPop 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);">
+                                <div style="font-size: 24px; font-weight: bold; color: #10b981; margin-bottom: 8px;">🎉 GEWINN! 🎉</div>
+                                <img src="${data.gifUrl}" 
+                                     alt="Win" 
+                                     loading="lazy"
+                                     style="max-width: 180px; 
+                                            width: 100%; 
+                                            height: auto; 
+                                            border-radius: 12px; 
+                                            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+                                            border: 3px solid #10b981;">
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             } else if (event.type === 'status') {
