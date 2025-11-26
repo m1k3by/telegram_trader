@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/index.js"
+    }
+  ],
+  "env": {
+    "API_ID": "@api_id",
+    "API_HASH": "@api_hash",
+    "PHONE_NUMBER": "@phone_number",
+    "SESSION_STRING": "@session_string"
+  }
+}

@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Trader - Dashboard</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .status.online {
+            background: #10b981;
+            color: white;
+        }
+        
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .status-card {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 12px 15px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .status-info {
+            flex: 1;
+        }
+        
+        .status-info h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .status-badge.online {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-badge.offline {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .status-time {
+            font-size: 11px;
+            color: #999;
+        }
+        
+        .status-details {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .status-details strong {
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .positions-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .positions-section h2 {
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .refresh-badge {
+            font-size: 11px;
+            color: #999;
+            font-weight: normal;
+        }
+        
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .positions-table th {
+            background: #f9fafb;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .positions-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .positions-table tr:hover {
+            background: #f9fafb;
+        }
+        
+        .direction-buy {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        .direction-sell {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        
+        .pnl-positive {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        .pnl-negative {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .stat-card .value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .stat-card .subtext {
+            color: #999;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .events-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .events-section h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .event {
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        
+        .event.signal {
+            border-left-color: #3b82f6;
+        }
+        
+        .event.trade {
+            border-left-color: #10b981;
+        }
+        
+        .event.error {
+            border-left-color: #ef4444;
+        }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .event-type {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .event-time {
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .event-content {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .signal-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .signal-detail {
+            background: white;
+            padding: 8px;
+            border-radius: 5px;
+        }
+        
+        .signal-detail strong {
+            color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .stat-card .value {
+                font-size: 28px;
+            }
+        }
+        
+        .buy {
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .sell {
+            color: #ef4444;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Telegram Trader Dashboard</h1>
+            <span class="status online" id="status">● Dashboard Online</span>
+            
+            <!-- Status Cards -->
+            <div class="status-cards">
+                <div class="status-card" id="telegramStatus">
+                    <div class="status-info">
+                        <h3>Telegram</h3>
+                        <div class="status-badge offline">● Offline</div>
+                        <div class="status-time">Letzter Kontakt: --</div>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="igStatus">
+                    <div class="status-info">
+                        <h3>IG Markets</h3>
+                        <div class="status-badge offline">● Offline</div>
+                        <div class="status-time">Letzter Kontakt: --</div>
+                    </div>
+                </div>
+                
+                <div class="status-card" id="serverStatus">
+                    <div class="status-info">
+                        <h3>Hetzner Server</h3>
+                        <div class="status-badge online">● Online</div>
+                        <div class="status-details">
+                            <span>CPU: <strong id="cpuUsage">--</strong></span>
+                            <span>RAM: <strong id="ramUsage">--</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Signale Erkannt</h3>
+                <div class="value" id="totalSignals">0</div>
+                <div class="subtext">Seit Start</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Trades Ausgeführt</h3>
+                <div class="value" id="totalTrades">0</div>
+                <div class="subtext" id="tradeSuccess">0 erfolgreich, 0 fehlgeschlagen</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Erfolgsrate</h3>
+                <div class="value" id="successRate">0%</div>
+                <div class="subtext">Basierend auf ausgeführten Trades</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Gesamt Profit/Loss</h3>
+                <div class="value" id="netProfit" style="color: #667eea;">0.00€</div>
+                <div class="subtext" id="profitBreakdown">+0€ / -0€</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Uptime</h3>
+                <div class="value" id="uptime">0m</div>
+                <div class="subtext" id="startTime">Gestartet: ...</div>
+            </div>
+        </div>
+        
+        <div class="positions-section">
+            <h2>
+                Offene Positionen
+                <span class="refresh-badge" id="positionsRefresh">Aktualisiert vor --</span>
+            </h2>
+            <table class="positions-table" id="positionsTable">
+                <thead>
+                    <tr>
+                        <th>Instrument</th>
+                        <th>Richtung</th>
+                        <th>Größe</th>
+                        <th>Investment</th>
+                        <th>Eröffnung</th>
+                        <th>Aktuell</th>
+                        <th>P&L</th>
+                        <th>Stop Loss</th>
+                        <th>Take Profit</th>
+                        <th>Deal ID</th>
+                    </tr>
+                </thead>
+                <tbody id="positionsBody">
+                    <tr>
+                        <td colspan="10" class="empty-state">Keine offenen Positionen</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="events-section">
+            <h2>Live Events</h2>
+            <div id="events"></div>
+        </div>
+    </div>
+    
+    <script>
+        const socket = io();
+        
+        // Update stats
+        socket.on('stats', (stats) => {
+            document.getElementById('totalSignals').textContent = stats.totalSignals;
+            document.getElementById('totalTrades').textContent = stats.totalTrades;
+            document.getElementById('tradeSuccess').textContent = 
+                `${stats.successfulTrades} erfolgreich, ${stats.failedTrades} fehlgeschlagen`;
+            
+            const successRate = stats.totalTrades > 0 
+                ? ((stats.successfulTrades / stats.totalTrades) * 100).toFixed(1)
+                : 0;
+            document.getElementById('successRate').textContent = successRate + '%';
+            
+            // Update profit/loss
+            const netProfit = stats.netProfit || 0;
+            const totalProfit = stats.totalProfit || 0;
+            const totalLoss = stats.totalLoss || 0;
+            
+            const netProfitEl = document.getElementById('netProfit');
+            netProfitEl.textContent = (netProfit >= 0 ? '+' : '') + netProfit.toFixed(2) + '€';
+            netProfitEl.style.color = netProfit >= 0 ? '#10b981' : '#ef4444';
+            
+            document.getElementById('profitBreakdown').textContent = 
+                `+${totalProfit.toFixed(2)}€ / -${totalLoss.toFixed(2)}€`;
+            
+            const uptime = Math.floor((Date.now() - new Date(stats.startTime)) / 1000 / 60);
+            document.getElementById('uptime').textContent = uptime + 'm';
+            document.getElementById('startTime').textContent = 
+                'Gestartet: ' + new Date(stats.startTime).toLocaleString('de-DE');
+        });
+        
+        // Handle new signals
+        socket.on('signal', (event) => {
+            addEvent(event);
+            updateStats();
+        });
+        
+        // Handle new trades
+        socket.on('trade', (event) => {
+            addEvent(event);
+            updateStats();
+        });
+        
+        // Handle status updates
+        socket.on('status', (event) => {
+            addEvent(event);
+        });
+        
+        // Initial events load
+        socket.on('events', (events) => {
+            // Sort by timestamp (newest first) before displaying
+            events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            events.forEach(addEvent);
+        });
+        
+        function addEvent(event) {
+            const eventsDiv = document.getElementById('events');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event ${event.type}`;
+            eventDiv.dataset.timestamp = event.timestamp; // Store timestamp for sorting
+            
+            const time = new Date(event.timestamp).toLocaleTimeString('de-DE');
+            
+            let content = '';
+            if (event.type === 'signal') {
+                const data = event.data;
+                const direction = data.direction === 'BUY' ? 
+                    '<span class="buy">KAUFEN</span>' : 
+                    '<span class="sell">VERKAUFEN</span>';
+                
+                content = `
+                    <div class="event-header">
+                        <span class="event-type">SIGNAL ERKANNT</span>
+                        <span class="event-time">${time}</span>
+                    </div>
+                    <div class="signal-details">
+                        <div class="signal-detail">
+                            <strong>Aktion:</strong> ${direction}
+                        </div>
+                        <div class="signal-detail">
+                            <strong>Symbol:</strong> ${data.symbol || 'N/A'}
+                        </div>
+                        <div class="signal-detail">
+                            <strong>Preis:</strong> ${data.entryPrice || data.price || 'N/A'}
+                        </div>
+                        ${data.stopLoss ? `<div class="signal-detail"><strong>SL:</strong> ${data.stopLoss}</div>` : ''}
+                        ${data.takeProfit ? `<div class="signal-detail"><strong>TP:</strong> ${data.takeProfit}</div>` : ''}
+                    </div>
+                `;
+            } else if (event.type === 'trade') {
+                const data = event.data;
+                const isSuccess = data.dealStatus === 'ACCEPTED' || (data.status === 'success' && !data.dealStatus);
+                const isRejected = data.dealStatus === 'REJECTED';
+                
+                let statusText = '';
+                let direction = '';
+                
+                // Determine status and direction based on action type
+                if (data.direction === 'CLOSE') {
+                    statusText = isSuccess ? 
+                        '<span class="buy">🔒 POSITION GESCHLOSSEN</span>' : 
+                        '<span class="sell">❌ SCHLIESSEN FEHLGESCHLAGEN</span>';
+                    direction = '<span class="sell">SCHLIESSEN</span>';
+                } else if (data.direction === 'SL_UPDATE') {
+                    statusText = isSuccess ? 
+                        '<span class="buy">🛑 STOP LOSS AKTUALISIERT</span>' : 
+                        '<span class="sell">❌ SL UPDATE FEHLGESCHLAGEN</span>';
+                    direction = '<span class="buy">SL UPDATE</span>';
+                } else {
+                    statusText = isSuccess ? 
+                        '<span class="buy">✅ TRADE ERFOLGREICH</span>' : 
+                        isRejected ?
+                        '<span class="sell">❌ TRADE ABGELEHNT</span>' :
+                        data.status === 'error' ? 
+                        '<span class="sell">❌ FEHLER</span>' : 
+                        '<span class="buy">📝 TRADE GELOGGT</span>';
+                    
+                    direction = data.direction === 'BUY' ? 
+                        '<span class="buy">KAUFEN</span>' : 
+                        '<span class="sell">VERKAUFEN</span>';
+                }
+                
+                content = `
+                    <div class="event-header">
+                        <span class="event-type">${statusText}</span>
+                        <span class="event-time">${time}</span>
+                    </div>
+                    <div class="signal-details">
+                        <div class="signal-detail">
+                            <strong>Aktion:</strong> ${direction}
+                        </div>
+                        <div class="signal-detail">
+                            <strong>Symbol:</strong> ${data.symbol || 'N/A'}
+                        </div>
+                        ${data.level ? `<div class="signal-detail"><strong>Preis:</strong> ${data.level} ${data.currency || ''}</div>` : (data.entryPrice ? `<div class="signal-detail"><strong>Signal Preis:</strong> ${data.entryPrice}</div>` : '')}
+                        ${data.optionType ? `<div class="signal-detail"><strong>Option:</strong> ${data.optionType} ${data.strikePrice || ''}</div>` : ''}
+                        ${data.riskAmount ? `<div class="signal-detail"><strong>Investment:</strong> €${data.riskAmount.toFixed(2)}</div>` : ''}
+                        ${data.stopLoss ? `<div class="signal-detail"><strong>Neuer SL:</strong> ${data.stopLoss}</div>` : ''}
+                        ${data.profit !== undefined ? `<div class="signal-detail"><strong>Profit:</strong> ${data.profit > 0 ? '+' : ''}${data.profit}€</div>` : ''}
+                        ${data.size ? `<div class="signal-detail"><strong>Größe:</strong> ${data.size}</div>` : ''}
+                        ${data.dealId ? `<div class="signal-detail"><strong>Deal ID:</strong> ${data.dealId}</div>` : ''}
+                        ${data.reason && data.reason !== 'SUCCESS' ? `<div class="signal-detail" style="grid-column: 1/-1;"><strong>Grund:</strong> ${data.reason}</div>` : ''}
+                        ${data.message && data.message !== data.reason && !data.message.includes('Trade executed via IG Markets API') ? `<div class="signal-detail" style="grid-column: 1/-1;"><strong>Nachricht:</strong> ${data.message}</div>` : ''}
+                    </div>
+                `;
+            } else if (event.type === 'status') {
+                const data = event.data;
+                const statusMsg = data.connected ? 
+                    `✅ Verbunden als ${data.user || 'User'}` : 
+                    '❌ Nicht verbunden';
+                
+                content = `
+                    <div class="event-header">
+                        <span class="event-type">STATUS</span>
+                        <span class="event-time">${time}</span>
+                    </div>
+                    <div class="event-content">
+                        ${statusMsg}
+                        ${data.chats && data.chats.length > 0 ? `<br>Chats: ${data.chats.join(', ')}` : ''}
+                    </div>
+                `;
+            } else {
+                content = `
+                    <div class="event-header">
+                        <span class="event-type">${event.type.toUpperCase()}</span>
+                        <span class="event-time">${time}</span>
+                    </div>
+                    <div class="event-content">${JSON.stringify(event.data || event.message || event)}</div>
+                `;
+            }
+            
+            eventDiv.innerHTML = content;
+            
+            // Insert in correct position based on timestamp (newest first)
+            const eventTimestamp = new Date(event.timestamp);
+            let inserted = false;
+            
+            for (let i = 0; i < eventsDiv.children.length; i++) {
+                const childTimestamp = new Date(eventsDiv.children[i].dataset.timestamp);
+                if (eventTimestamp > childTimestamp) {
+                    eventsDiv.insertBefore(eventDiv, eventsDiv.children[i]);
+                    inserted = true;
+                    break;
+                }
+            }
+            
+            // If not inserted (oldest event), append at end
+            if (!inserted) {
+                eventsDiv.appendChild(eventDiv);
+            }
+            
+            // Keep only last 20 events visible
+            while (eventsDiv.children.length > 20) {
+                eventsDiv.removeChild(eventsDiv.lastChild);
+            }
+        }
+        
+        async function updateStats() {
+            const response = await fetch('/api/stats');
+            const stats = await response.json();
+            socket.emit('stats', stats);
+        }
+        
+        // Update uptime every minute
+        setInterval(() => {
+            updateStats();
+        }, 60000);
+        
+        // Connection status
+        socket.on('connect', () => {
+            document.getElementById('status').textContent = '● Dashboard Online';
+            document.getElementById('status').className = 'status online';
+        });
+        
+        socket.on('disconnect', () => {
+            document.getElementById('status').textContent = '● Dashboard Offline';
+            document.getElementById('status').className = 'status offline';
+        });
+        
+        // Service status updates
+        socket.on('serviceStatus', (data) => {
+            updateServiceStatus(data);
+        });
+        
+        // Server stats
+        socket.on('serverStats', (data) => {
+            document.getElementById('cpuUsage').textContent = data.cpu + '%';
+            document.getElementById('ramUsage').textContent = data.ram + '%';
+        });
+        
+        // Positions updates
+        socket.on('positions', (positions) => {
+            updatePositionsTable(positions);
+        });
+        
+        function updateServiceStatus(data) {
+            // Telegram status
+            const telegramCard = document.getElementById('telegramStatus');
+            const telegramBadge = telegramCard.querySelector('.status-badge');
+            const telegramTime = telegramCard.querySelector('.status-time');
+            
+            if (data.telegram.online) {
+                telegramBadge.textContent = '● Online';
+                telegramBadge.className = 'status-badge online';
+                telegramTime.textContent = `Letzter Kontakt: ${formatTime(data.telegram.lastSeen)}`;
+            } else {
+                telegramBadge.textContent = '● Offline';
+                telegramBadge.className = 'status-badge offline';
+                telegramTime.textContent = data.telegram.lastSeen ? `Offline seit ${formatTime(data.telegram.lastSeen)}` : 'Nie verbunden';
+            }
+            
+            // IG Markets status
+            const igCard = document.getElementById('igStatus');
+            const igBadge = igCard.querySelector('.status-badge');
+            const igTime = igCard.querySelector('.status-time');
+            
+            if (data.igMarkets.online) {
+                igBadge.textContent = '● Online';
+                igBadge.className = 'status-badge online';
+                igTime.textContent = `Letzter Kontakt: ${formatTime(data.igMarkets.lastSeen)}`;
+            } else {
+                igBadge.textContent = '● Offline';
+                igBadge.className = 'status-badge offline';
+                igTime.textContent = data.igMarkets.lastSeen ? `Offline seit ${formatTime(data.igMarkets.lastSeen)}` : 'Nie verbunden';
+            }
+        }
+        
+        function updatePositionsTable(positions) {
+            const tbody = document.getElementById('positionsBody');
+            const refresh = document.getElementById('positionsRefresh');
+            
+            refresh.textContent = 'Gerade aktualisiert';
+            
+            if (!positions || positions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Keine offenen Positionen</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = positions.map(pos => {
+                const direction = pos.direction === 'BUY' ? 
+                    '<span class="direction-buy">LONG ↗</span>' : 
+                    '<span class="direction-sell">SHORT ↘</span>';
+                
+                const pnl = pos.profit || 0;
+                const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+                const pnlText = pnl >= 0 ? `+${pnl.toFixed(2)}€` : `${pnl.toFixed(2)}€`;
+                
+                const investment = pos.investment || (pos.size * pos.openLevel);
+                const investmentText = investment ? `${investment.toFixed(2)} ${pos.currency || ''}` : '--';
+                
+                return `
+                    <tr>
+                        <td><strong>${pos.instrumentName}</strong></td>
+                        <td>${direction}</td>
+                        <td>${pos.size}</td>
+                        <td>${investmentText}</td>
+                        <td>${pos.openLevel}</td>
+                        <td>${pos.currentLevel || '--'}</td>
+                        <td class="${pnlClass}">${pnlText}</td>
+                        <td>${pos.stopLevel || '--'}</td>
+                        <td>${pos.limitLevel || '--'}</td>
+                        <td style="font-family: monospace; font-size: 11px;">${pos.dealId}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = Math.floor((now - date) / 1000);
+            
+            if (diff < 60) return 'gerade eben';
+            if (diff < 300) return 'vor ' + Math.floor(diff / 60) + ' Min';
+            return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // Auto-refresh positions every 30 seconds
+        setInterval(() => {
+            socket.emit('requestPositions');
+            const refresh = document.getElementById('positionsRefresh');
+            const lastUpdate = refresh.textContent;
+            if (lastUpdate.includes('Gerade')) {
+                refresh.textContent = 'Aktualisiert vor 30s';
+            }
+        }, 30000);
+        
+        // Request initial positions
+        setTimeout(() => socket.emit('requestPositions'), 1000);
+    </script>
+</body>
+</html>
