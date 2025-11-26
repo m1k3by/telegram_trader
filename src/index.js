@@ -8,6 +8,7 @@ import { parseLiveTrend, isValidTrend, formatTrend, trendStore, calculatePotenti
 import { printHeader, createSummaryReport, selectBestPosition } from './helpers.js';
 import { igApi } from './igApi.js';
 import { startDashboard, broadcastSignal, broadcastTrade, broadcastStatus, updateServiceStatus, setIgApi, isTradingEnabled } from './dashboard.js';
+import { randomGif } from './gifs.js';
 
 // Load environment variables
 dotenv.config();
@@ -296,7 +297,7 @@ async function processTrendMessage(messageText, metadata) {
           console.log('🎉 Profit detected! Sending win.gif to Telegram...');
           await client.sendMessage(metadata.chatId, {
             message: `🎉🎉🎉 GEWINN! +${trend.data.profit}€ mit ${trend.data.instrument}! 🎉🎉🎉`,
-            file: 'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif' // Fun "You Win!" GIF
+            file: randomGif() // random fun GIF
           });
           console.log('✅ win.gif sent to Telegram!');
         } catch (error) {
