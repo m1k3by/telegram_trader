@@ -504,13 +504,14 @@
                         <th>P&L</th>
                         <th>Stop Loss</th>
                         <th>Take Profit</th>
+                        <th>Gekauft am</th>
                         <th>Deal ID</th>
                         <th>Aktion</th>
                     </tr>
                 </thead>
                 <tbody id="positionsBody">
                     <tr>
-                        <td colspan="10" class="empty-state">Keine offenen Positionen</td>
+                        <td colspan="12" class="empty-state">Keine offenen Positionen</td>
                     </tr>
                 </tbody>
             </table>
@@ -799,7 +800,7 @@
             refresh.textContent = 'Gerade aktualisiert';
             
             if (!positions || positions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Keine offenen Positionen</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" class="empty-state">Keine offenen Positionen</td></tr>';
                 return;
             }
             
@@ -815,6 +816,20 @@
                 const investment = pos.investment || (pos.size * pos.openLevel);
                 const investmentText = investment ? `${investment.toFixed(2)} ${pos.currency || ''}` : '--';
                 
+                // Format created datetime
+                let createdText = '--';
+                if (pos.createdDatetime) {
+                    const createdDate = new Date(pos.createdDatetime);
+                    createdText = createdDate.toLocaleString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                }
+                
                 return `
                     <tr>
                         <td><strong>${pos.instrumentName}</strong></td>
@@ -826,6 +841,7 @@
                         <td class="${pnlClass}">${pnlText}</td>
                         <td>${pos.stopLevel || '--'}</td>
                         <td>${pos.limitLevel || '--'}</td>
+                        <td style="font-size: 11px;">${createdText}</td>
                         <td style="font-family: monospace; font-size: 11px;">${pos.dealId}</td>
                         <td>
                             <button class="sell-btn" onclick="confirmSell('${pos.dealId}', '${pos.instrumentName}', '${pos.direction}', ${pos.size}, '${pos.epic}')">
