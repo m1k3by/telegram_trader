@@ -290,6 +290,20 @@ async function processTrendMessage(messageText, metadata) {
       console.log(`Result: ${trend.data.result}`);
       console.log(`Profit/Loss: ${trend.data.profit > 0 ? '+' : ''}${trend.data.profit}€\n`);
       
+      // Send win.gif to Telegram if profit is positive
+      if (trend.data.profit > 0) {
+        try {
+          console.log('🎉 Profit detected! Sending win.gif to Telegram...');
+          await client.sendMessage(metadata.chatId, {
+            message: `🎉🎉🎉 GEWINN! +${trend.data.profit}€ mit ${trend.data.instrument}! 🎉🎉🎉`,
+            file: 'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif' // Fun "You Win!" GIF
+          });
+          console.log('✅ win.gif sent to Telegram!');
+        } catch (error) {
+          console.error('⚠️ Failed to send win.gif:', error.message);
+        }
+      }
+      
       // Get IG EPIC for instrument
       const igMapping = mapInstrumentToIG(trend.data.instrument);
       

@@ -65,6 +65,9 @@ function saveStats() {
 let recentEvents = [];
 let stats = loadStats();
 
+// Map to track position creation dates: dealId -> createdDatetime
+let positionsMap = new Map();
+
 // Update startTime to current bot start (not from file)
 stats.startTime = new Date().toISOString();
 console.log(`📊 Bot started at: ${stats.startTime}`);
@@ -212,6 +215,20 @@ export function broadcastTrade(trade) {
   stats.totalTrades++;
   if (trade.status === 'success') {
     stats.successfulTrades++;
+    // Track position creation date if dealId exists and direction is not CLOSE
+    if (trade.dealId && trade.direction !== 'CLOSE' && trade.direction !== 'SL_UPDATE' && trade.direction !== 'TP_UPDATE') {
+      positionsMap.set(trade.dealId, {
+        createdDatetime: trade.timestamp || new Date().toISOString(),
+        epic: trade.epic,
+        symbol: trade.symbol
+      });
+      console.log(`📅 Tracked position creation: ${trade.dealId} at ${positionsMap.get(trade.dealId).createdDatetime}`);
+    }
+    // Remove from map when closed
+    if (trade.dealId && trade.direction === 'CLOSE') {
+      positionsMap.delete(trade.dealId);
+      console.log(`📅 Removed closed position from tracking: ${trade.dealId}`);
+    }
   } else if (trade.status === 'error') {
     stats.failedTrades++;
   }
@@ -310,19 +327,23 @@ async function sendPositions(socket) {
     
     const positions = await igApiInstance.getOpenPositions();
     
-    const formatted = positions.map(p => ({
-      dealId: p.position.dealId,
-      epic: p.market.epic,
-      instrumentName: p.market.instrumentName,
-      direction: p.position.direction,
-      size: p.position.size,
-      openLevel: p.position.level,
-      currentLevel: p.market.bid || p.market.offer || null,
-      stopLevel: p.position.stopLevel,
-      limitLevel: p.position.limitLevel,
-      profit: calculateProfit(p),
-      currency: p.position.currency
-    }));
+    const formatted = positions.map(p => {
+      const positionData = positionsMap.get(p.position.dealId);
+      return {
+        dealId: p.position.dealId,
+        epic: p.market.epic,
+        instrumentName: p.market.instrumentName,
+        direction: p.position.direction,
+        size: p.position.size,
+        openLevel: p.position.level,
+        currentLevel: p.market.bid || p.market.offer || null,
+        stopLevel: p.position.stopLevel,
+        limitLevel: p.position.limitLevel,
+        profit: calculateProfit(p),
+        currency: p.position.currency,
+        createdDatetime: positionData?.createdDatetime || p.position.createdDateUTC || null
+      };
+    });
     
     socket.emit('positions', formatted);
   } catch (error) {
