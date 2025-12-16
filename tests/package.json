@@ -1,0 +1,12 @@
+{
+  "name": "telegram-trader-tests",
+  "version": "1.0.0",
+  "description": "Unit Tests für Telegram Trading Bot",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:parser && npm run test:mapping",
+    "test:parser": "node tests/messageParser.test.js",
+    "test:mapping": "node tests/instrumentMapping.test.js",
+    "test:all": "npm test"
+  }
+}

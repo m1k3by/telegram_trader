@@ -7,7 +7,12 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "setup": "node setup_session.js"
+    "setup": "node setup_session.js",
+    "test": "node tests/messageParser.test.js && node tests/instrumentMapping.test.js && node tests/tradeRetry.test.js && node tests/integration.test.js && node tests/currencyConversion.test.js",
+    "test:unit": "node tests/messageParser.test.js && node tests/instrumentMapping.test.js",
+    "test:integration": "node tests/integration.test.js",
+    "test:retry": "node tests/tradeRetry.test.js",
+    "test:currency": "node tests/currencyConversion.test.js"
   },
   "keywords": [
     "telegram",
