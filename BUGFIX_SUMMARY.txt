@@ -1,0 +1,109 @@
+/**
+ * DEMONSTRATION: Was wurde gefixt?
+ * 
+ * Zeigt den Unterschied zwischen ALT (buggy) und NEU (fixed)
+ */
+
+console.log('🐛 PROBLEM-ANALYSE: Warum wurden 9.8 Kontrakte gekauft?\n');
+console.log('═'.repeat(70));
+
+console.log('\n📊 ALTE IMPLEMENTIERUNG (BUGGY):');
+console.log('─'.repeat(70));
+
+console.log('\n1️⃣  FALSCHER EPIC:');
+console.log('   Signal: "ICH VERKAUFE GBP/JPY"');
+console.log('   Mapping: GBP/JPY → CS.D.GBPJPY.CEA.IP ❌ (gibt 404!)');
+console.log('   Folge: marketDetails = null');
+
+console.log('\n2️⃣  FEHLENDE CONTRACT SIZE:');
+console.log('   const contractSize = marketDetails?.rawData?.instrument?.contractSize || 1;');
+console.log('   Da marketDetails = null → contractSize = 1 (DEFAULT!)');
+console.log('   ❌ FALSCH! GBP/JPY = 100,000 units pro Kontrakt!');
+
+console.log('\n3️⃣  FEHLENDE MARGIN:');
+console.log('   let marginPercent = 0.05; // Fallback 5%');
+console.log('   Da API null → marginPercent = 0.05');
+console.log('   ⚠️  Könnte falsch sein (GBP/JPY = 3.33%)');
+
+console.log('\n4️⃣  FALSCHE KALKULATION:');
+console.log('   marginPerContract = 205.81 × 0.05 × 0.00555 × 1');
+console.log('   marginPerContract = 0.057€ per contract');
+console.log('   tradeSize = 100€ / 0.057€ = 1,754 contracts');
+console.log('   → Gecapped auf 100 contracts (max limit)');
+console.log('   → Gerundet auf 9.8 contracts (wahrscheinlich min increment)');
+console.log('   ❌ 9.8 contracts × 100,000 units = 980,000 units exposure!');
+
+console.log('\n5️⃣  SECURITY GATE VERSAGT:');
+console.log('   realRisk = 9.8 × 0.057€ = 0.56€');
+console.log('   maxAllowedRisk = 300€');
+console.log('   ✅ Gate passed (0.56€ < 300€)');
+console.log('   ❌ ABER: Real-world risk war ~38,000€!');
+
+console.log('\n\n✅ NEUE IMPLEMENTIERUNG (FIXED):');
+console.log('─'.repeat(70));
+
+console.log('\n1️⃣  KORREKTER EPIC:');
+console.log('   Signal: "ICH VERKAUFE GBP/JPY"');
+console.log('   Mapping: GBP/JPY → CS.D.GBPJPY.CFD.IP ✅');
+console.log('   API Response: 200 OK');
+console.log('   marketDetails: {');
+console.log('     marginFactor: 3.33,');
+console.log('     currencyCode: "JPY",');
+console.log('     rawData: {');
+console.log('       instrument: {');
+console.log('         contractSize: 100000,');
+console.log('         lotSize: 1000');
+console.log('       }');
+console.log('     }');
+console.log('   }');
+
+console.log('\n2️⃣  CONTRACT SIZE VALIDATION:');
+console.log('   const contractSize = marketDetails?.rawData?.instrument?.contractSize;');
+console.log('   if (!contractSize) {');
+console.log('     console.error("❌ Contract Size missing!");');
+console.log('     return; // ABORT TRADE');
+console.log('   }');
+console.log('   ✅ contractSize = 100,000');
+
+console.log('\n3️⃣  KORREKTE MARGIN:');
+console.log('   marginPercent = marketDetails.marginFactor / 100;');
+console.log('   marginPercent = 3.33 / 100 = 0.0333');
+console.log('   ✅ Echte margin von IG API!');
+
+console.log('\n4️⃣  KORREKTE EXCHANGE RATE:');
+console.log('   exchangeRate = await getExchangeRateToEURCached("JPY");');
+console.log('   exchangeRate = 0.00555 EUR');
+console.log('   ✅ Live rate von frankfurter.app!');
+
+console.log('\n5️⃣  KORREKTE KALKULATION:');
+console.log('   marginPerContract = 205.81 × 0.0333 × 0.00555 × 100,000');
+console.log('   marginPerContract = 3,803€ per contract');
+console.log('   tradeSize = 100€ / 3,803€ = 0.026 contracts');
+console.log('   → Rounded up to 0.1 (minimum size)');
+console.log('   ✅ 0.1 contracts × 100,000 units = 10,000 units exposure');
+
+console.log('\n6️⃣  SECURITY GATE FUNKTIONIERT:');
+console.log('   realRisk = 0.1 × 3,803€ = 380€');
+console.log('   maxAllowedRisk = 300€');
+console.log('   ❌ Gate REJECTED! (380€ > 300€)');
+console.log('   → Trade ABORTED');
+console.log('   ✅ Korrekt! 380€ risk überschreitet 300€ limit!');
+
+console.log('\n\n💡 LÖSUNG FÜR USER:');
+console.log('─'.repeat(70));
+console.log('\nDa GBP/JPY minimum 0.1 Kontrakte = 380€ risk hat,');
+console.log('gibt es 3 Optionen:');
+console.log('\n A) Risk auf 150€ erhöhen → 0.1 contracts = 380€ (knapp über 200%)');
+console.log(' B) Nur Mini-Paare traden (10k statt 100k) → passt bei 100€');
+console.log(' C) Security Gate auf 400% erhöhen (statt 300%)');
+
+console.log('\n\n📋 ZUSAMMENFASSUNG DER FIXES:');
+console.log('═'.repeat(70));
+console.log('✅ 1. FOREX EPICs korrigiert (.CEA.IP → .CFD.IP)');
+console.log('✅ 2. GBP/JPY, GBP/ZAR, NZD/CAD Mappings hinzugefügt');
+console.log('✅ 3. Contract Size Validation (ABORT wenn fehlt)');
+console.log('✅ 4. Korrekte Margin von API (nicht fallback)');
+console.log('✅ 5. Live Exchange Rates (frankfurter.app)');
+console.log('✅ 6. Security Gate mit Contract Size Multiplikation');
+console.log('\n🚀 Deployed: Restart #87');
+console.log('═'.repeat(70));

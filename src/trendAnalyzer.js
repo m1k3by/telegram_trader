@@ -12,7 +12,7 @@
  */
 function scalePrice(instrument, price) {
   // Instruments that need 100x scaling (2-digit → 4-digit)
-  const needsScaling = ['BRENT', 'OIL', 'WTI'];
+  const needsScaling = ['OIL', 'WTI', 'BRENT'];
   
   if (!needsScaling.includes(instrument)) {
     return price;
@@ -45,13 +45,15 @@ export function parseLiveTrend(messageText) {
   // 1. Check for POSITION OPEN (ICH KAUFE/VERKAUFE)
   // Example: "ICH KAUFE GOLD (EK: 4100.77)"
   // Example: "ICH KAUFE ETHEREUM CALL 3300 (EK: 137.98)"
-  const openPattern = /ICH\s+(KAUFE|VERKAUFE)\s+([A-Z0-9]+)(?:\s+(CALL|PUT)\s+(\d+))?\s*\(EK:\s*(\d+(?:[.,]\d+)?)\)/i;
+  // Example: "ICH KAUFE EUR/USD (EK: 1.15954)"
+  // Example: "ICH KAUFE BITCOIN CASH (EK: 500.00)"
+  const openPattern = /ICH\s+(KAUFE|VERKAUFE)\s+(.+?)(?:\s+(CALL|PUT)\s+(\d+))?\s*\(EK:\s*(\d+(?:[.,]\d+)?)\)/i;
   const openMatch = messageText.match(openPattern);
   
   if (openMatch) {
     trend.type = 'POSITION_OPEN';
     const action = openMatch[1].toUpperCase();
-    const instrument = openMatch[2].toUpperCase();
+    const instrument = openMatch[2].trim().toUpperCase(); // Trim whitespace!
     const optionType = openMatch[3] ? openMatch[3].toUpperCase() : null;
     const strikePrice = openMatch[4] ? parseFloat(openMatch[4]) : null;
     let entryPrice = parseFloat(openMatch[5].replace(',', '.'));
@@ -87,8 +89,8 @@ export function parseLiveTrend(messageText) {
   // Example: "ICH SCHLIEßE GOLD❗3.343€ GEWINN 🎉"
   // Example: "ICH SCHLIEßE ETHEREUM CALL 3300❗50.00€ GEWINN"
   // Example: "ICH SCHLIEßE DAX" (manual close without P/L info)
-  const closePatternWithPL = /ICH\s+SCHLIE[ßS]E\s+([A-Z0-9]+)(?:\s+(CALL|PUT)\s+(\d+))?.*?(\d+(?:[.,]\d+)?)\s*€\s*(GEWINN|VERLUST)/i;
-  const closePatternSimple = /ICH\s+SCHLIE[ßS]E\s+([A-Z0-9]+)(?:\s+(CALL|PUT)\s+(\d+))?/i;
+  const closePatternWithPL = /ICH\s+SCHLIE[ßS]E\s+([A-Z0-9\/&]+)(?:\s+(CALL|PUT)\s+(\d+))?[\s\S]*?([+-]?\d+(?:[.,]\d+)?)\s*€\s*(GEWINN|VERLUST)/i;
+  const closePatternSimple = /ICH\s+SCHLIE[ßS]E\s+([A-Z0-9\/&]+)(?:\s+(CALL|PUT)\s+(\d+))?/i;
   
   let closeMatch = messageText.match(closePatternWithPL);
   let hasProfit = true;
@@ -130,17 +132,17 @@ export function parseLiveTrend(messageText) {
   
   // 3. Check for STOP LOSS UPDATE
   // Example: "Ich setze den SL bei BITCOIN auf 84376.00"
-  // Example: "Ich setze den SL bei BRENT auf 6130"
+  // Example: "GOLD SL AUF 4200"
   // Example: "Ich setze den SL bei TESLA PUT 390 auf 28.99"
-  const slPattern = /(?:Ich\s+setze\s+den\s+)?SL\s+(?:bei\s+)?([A-Z0-9]+)(?:\s+(CALL|PUT)\s+(\d+))?\s+auf\s+(\d+(?:[.,]\d+)?)/i;
+  const slPattern = /(?:(?:Ich\s+setze\s+den\s+)?SL\s+(?:bei\s+)?([A-Z0-9\/&]+)|([A-Z0-9\/&]+)\s+SL)(?:\s+(CALL|PUT)\s+(\d+))?\s+[Aa][Uu][Ff]\s+(\d+(?:[.,]\d+)?)/i;
   const slMatch = messageText.match(slPattern);
   
   if (slMatch) {
-    trend.type = 'STOP_LOSS_UPDATE';
-    const instrument = slMatch[1].toUpperCase();
-    const optionType = slMatch[2] ? slMatch[2].toUpperCase() : null;
-    const strikePrice = slMatch[3] ? parseFloat(slMatch[3]) : null;
-    let slPrice = parseFloat(slMatch[4].replace(',', '.'));
+    trend.type = 'SL_UPDATE';
+    const instrument = (slMatch[1] || slMatch[2]).toUpperCase();
+    const optionType = slMatch[3] ? slMatch[3].toUpperCase() : null;
+    const strikePrice = slMatch[4] ? parseFloat(slMatch[4]) : null;
+    let slPrice = parseFloat(slMatch[5].replace(',', '.'));
     
     // Scale price if needed (e.g., BRENT 61.00 → 6100)
     slPrice = scalePrice(instrument, slPrice);
@@ -160,11 +162,11 @@ export function parseLiveTrend(messageText) {
 
   // 3b. Check for Short STOP LOSS UPDATE
   // Example: "BITCOIN PUT 88000 SL: 2367.00"
-  const slPatternShort = /^([A-Z0-9]+)(?:\s+(CALL|PUT)\s+(\d+))?\s+SL:?\s+(\d+(?:[.,]\d+)?)/i;
+  const slPatternShort = /^([A-Z0-9\/&]+)(?:\s+(CALL|PUT)\s+(\d+))?\s+SL:?\s+(\d+(?:[.,]\d+)?)/i;
   const slMatchShort = messageText.match(slPatternShort);
 
   if (slMatchShort) {
-    trend.type = 'STOP_LOSS_UPDATE';
+    trend.type = 'SL_UPDATE';
     const instrument = slMatchShort[1].toUpperCase();
     const optionType = slMatchShort[2] ? slMatchShort[2].toUpperCase() : null;
     const strikePrice = slMatchShort[3] ? parseFloat(slMatchShort[3]) : null;
@@ -186,17 +188,18 @@ export function parseLiveTrend(messageText) {
     return trend;
   }
 
-  // 3b. Check for TAKE PROFIT UPDATE
+  // 3c. Check for TAKE PROFIT UPDATE
   // Example: "Ich setze den TP bei DOW auf 26160.0"
-  const tpPattern = /(?:Ich\s+setze\s+den\s+)?TP\s+(?:bei\s+)?([A-Z0-9]+)(?:\s+(CALL|PUT)\s+(\d+))?\s+auf\s+(\d+(?:[.,]\d+)?)/i;
+  // Example: "GOLD TP AUF 4250"
+  const tpPattern = /(?:(?:Ich\s+setze\s+den\s+)?TP\s+(?:bei\s+)?([A-Z0-9\/&]+)|([A-Z0-9\/&]+)\s+TP)(?:\s+(CALL|PUT)\s+(\d+))?\s+[Aa][Uu][Ff]\s+(\d+(?:[.,]\d+)?)/i;
   const tpMatch = messageText.match(tpPattern);
 
   if (tpMatch) {
-    trend.type = 'TAKE_PROFIT_UPDATE';
-    const instrument = tpMatch[1].toUpperCase();
-    const optionType = tpMatch[2] ? tpMatch[2].toUpperCase() : null;
-    const strikePrice = tpMatch[3] ? parseFloat(tpMatch[3]) : null;
-    let tpPrice = parseFloat(tpMatch[4].replace(',', '.'));
+    trend.type = 'TP_UPDATE';
+    const instrument = (tpMatch[1] || tpMatch[2]).toUpperCase();
+    const optionType = tpMatch[3] ? tpMatch[3].toUpperCase() : null;
+    const strikePrice = tpMatch[4] ? parseFloat(tpMatch[4]) : null;
+    let tpPrice = parseFloat(tpMatch[5].replace(',', '.'));
 
     // Scale price if needed (e.g., BRENT 61.00 → 6100)
     tpPrice = scalePrice(instrument, tpPrice);
@@ -342,34 +345,84 @@ export function parseLiveTrend(messageText) {
 }
 
 /**
+ * Check if it's weekend (Saturday or Sunday)
+ * @returns {boolean} - True if weekend
+ */
+function isWeekend() {
+  const now = new Date();
+  const day = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+  return day === 0 || day === 6;
+}
+
+/**
  * Map instrument names to IG Markets EPIC codes (CFD Version for EU)
- * @param {string} instrument - Instrument name (e.g., "DAX", "GOLD", "BITCOIN")
+ * Automatically uses weekend contracts on Saturdays and Sundays
+ * 
+ * HOW TO ADD NEW INSTRUMENTS:
+ * 1. Find the EPIC code using the search script: node search_epics.js "Name"
+ *    Or use the IG API / Platform to find the 'epic' (e.g., CS.D.BTCUSD.CFD.IP)
+ * 2. Add a new entry to the mapping object below. Key is the uppercase instrument name from the signal.
+ * 3. Optional: Add a 'fallback' object if you want to try another instrument if the first one fails
+ *    Example: fallback: { epic: '...', symbol: '...' }
+ * 
+ * @param {string} instrument - Instrument name (e.g., "DAX", "GOLD", "BITCOIN", "EUR/USD")
  * @returns {Object} - IG EPIC code, symbol name, and expiry
  */
 function mapInstrumentToIG(instrument) {
+  // Normalize forex pairs: "EUR/USD" → "EURUSD"
+  const normalizedInstrument = instrument.replace(/\//g, '').toUpperCase();
+  
   const mapping = {
-    // Commodities (CFD)
+    // Commodities (CFD) - Real margins from IG API
     'GOLD': { 
       epic: 'CS.D.CFEGOLD.CEA.IP', 
       symbol: 'Gold', 
       expiry: '-',
+      marginPercent: 0.05, // 5% (verified via API)
       fallback: {
         epic: 'IX.D.SUNGOLD.CEA.IP',
         symbol: 'Weekend Gold',
         expiry: '-'
       }
     },
-    'SILBER': { epic: 'CS.D.USSIGC.CFD.IP', symbol: 'Silver', expiry: '-' },
-    'SILVER': { epic: 'CS.D.USSIGC.CFD.IP', symbol: 'Silver', expiry: '-' },
-    'OIL': { epic: 'CC.D.LCO.UNC.IP', symbol: 'Oil - Brent Crude', expiry: '-' },
-    'WTI': { epic: 'CC.D.CL.UNC.IP', symbol: 'Oil - US Crude', expiry: '-' },
-    'BRENT': { epic: 'CC.D.LCO.UNC.IP', symbol: 'Oil - Brent Crude', expiry: '-' },
+    'SILBER': { epic: 'CS.D.USSIGC.CFD.IP', symbol: 'Silver', expiry: '-', marginPercent: 0.05 },
+    'SILVER': { epic: 'CS.D.USSIGC.CFD.IP', symbol: 'Silver', expiry: '-', marginPercent: 0.05 },
+    'OIL': { 
+      epic: 'CC.D.LCO.UME.IP', // Öl - Brent-Rohöl (1€)
+      symbol: 'Oil - Brent Crude (1€)', 
+      expiry: '-', 
+      marginPercent: 0.10,
+      contractSize: 1, // 1€ per point? Need to verify. Usually 1€ contract means 1€ per point per contract.
+      priceScaling: 100, // Signal 63.0 -> IG 6300.0
+      minDealSize: 0.25,
+      dealSizeIncrement: 0.01
+    },
+    'WTI': { 
+      epic: 'CC.D.CL.UNC.IP', 
+      symbol: 'Oil - US Crude', 
+      expiry: '-', 
+      marginPercent: 0.10,
+      contractSize: 10,
+      priceScaling: 100 // Signal 63.0 -> IG 6300.0
+    },
+    'BRENT': { 
+      epic: 'CC.D.LCO.UME.IP', // Öl - Brent-Rohöl (1€)
+      symbol: 'Oil - Brent Crude (1€)', 
+      expiry: '-', 
+      marginPercent: 0.10,
+      contractSize: 1, // 1€ contract
+      priceScaling: 100, // Signal 63.0 -> IG 6300.0
+      minDealSize: 0.25,
+      dealSizeIncrement: 0.01
+    },
 
     // Indices (CFD)
     'DAX': { 
-      epic: 'IX.D.DAX.IFMM.IP', 
+      epic: 'IX.D.DAX.IFMM.IP', // 1€ contract (Mini) - Better for risk management
       symbol: 'Germany 40', 
       expiry: '-',
+      marginPercent: 0.05, // 5% margin requirement
+      dealSizeIncrement: 0.01, // Force 2 decimals to avoid 0.125 rejection (rounds to 0.13)
       fallback: {
         epic: 'IX.D.SUNDAX.IGN.IP', // Correct Weekend EPIC
         symbol: 'Weekend Germany 40',
@@ -377,9 +430,11 @@ function mapInstrumentToIG(instrument) {
       }
     },
     'DAX40': { 
-      epic: 'IX.D.DAX.IFMM.IP', 
+      epic: 'IX.D.DAX.IFMM.IP', // 1€ contract (Mini)
       symbol: 'Germany 40', 
       expiry: '-',
+      marginPercent: 0.05, // 5% margin requirement
+      dealSizeIncrement: 0.01, // Force 2 decimals
       fallback: {
         epic: 'IX.D.SUNDAX.IGN.IP', // Correct Weekend EPIC
         symbol: 'Weekend Germany 40',
@@ -387,9 +442,10 @@ function mapInstrumentToIG(instrument) {
       }
     },
     'SP500': { 
-      epic: 'IX.D.SPTRD.IFMM.IP', 
+      epic: 'IX.D.SPTRD.IFE.IP', 
       symbol: 'US 500', 
       expiry: '-',
+      marginPercent: 0.05 // 5% margin requirement
       // Fallback temporarily disabled - EPIC not found
       // fallback: {
       //   epic: 'IX.D.SPTRD.WKND.IP',
@@ -398,28 +454,30 @@ function mapInstrumentToIG(instrument) {
       // }
     },
     'S&P500': { 
-      epic: 'IX.D.SPTRD.IFMM.IP', 
+      epic: 'IX.D.SPTRD.IFE.IP', 
       symbol: 'US 500', 
       expiry: '-',
-      // Fallback temporarily disabled - EPIC not found
-      // fallback: {
-      //   epic: 'IX.D.SPTRD.WKND.IP',
-      //   symbol: 'Weekend US 500',
-      //   expiry: '-'
-      // }
+      marginPercent: 0.05,
+      minDealSize: 1,
+      fallback: {
+        epic: 'IX.D.SPTRD.WKND.IP',
+        symbol: 'Weekend US 500',
+        expiry: '-'
+      }
     },
     'NASDAQ': { 
-      epic: 'IX.D.NASDAQ.IFMM.IP', 
+      epic: 'IX.D.NASDAQ.IAE.IP', // 1€ Contract (Kassa) - Correct for small accounts
       symbol: 'US Tech 100', 
       expiry: '-',
+      minDealSize: 0.2, 
       fallback: {
-        epic: 'IX.D.SUNNAS.IFE.IP', // Correct Weekend EPIC
-        symbol: 'Weekend US Tech 100',
+        epic: 'IX.D.NASDAQ.IEA.IP', // 1$ Contract as fallback
+        symbol: 'US Tech 100 (1$)',
         expiry: '-'
       }
     },
     'DOW': { 
-      epic: 'IX.D.DOW.IFMM.IP', 
+      epic: 'IX.D.DOW.IAE.IP', // 1€ Contract (Kassa)
       symbol: 'Wall Street', 
       expiry: '-',
       fallback: {
@@ -429,7 +487,7 @@ function mapInstrumentToIG(instrument) {
       }
     },
     'FTSE': { 
-      epic: 'IX.D.FTSE.IFMM.IP', 
+      epic: 'IX.D.FTSE.IFE.IP', // 1€ Contract (Kassa)
       symbol: 'FTSE 100', 
       expiry: '-',
       fallback: {
@@ -439,7 +497,7 @@ function mapInstrumentToIG(instrument) {
       }
     },
     'CAC': { 
-      epic: 'IX.D.CAC.IFMM.IP', 
+      epic: 'IX.D.CAC.IFE.IP', // 1€ Contract (Kassa)
       symbol: 'France 40', 
       expiry: '-',
       fallback: {
@@ -450,103 +508,175 @@ function mapInstrumentToIG(instrument) {
     },
     'NIKKEI': { epic: 'IX.D.NIKKEI.IFMM.IP', symbol: 'Japan 225', expiry: '-' },
 
-    // Forex (Spot FX - CFD)
-    'EURUSD': { epic: 'CS.D.EURUSD.MINI.IP', symbol: 'EUR/USD', expiry: '-' },
-    'GBPUSD': { epic: 'CS.D.GBPUSD.MINI.IP', symbol: 'GBP/USD', expiry: '-' },
-    'USDJPY': { epic: 'CS.D.USDJPY.MINI.IP', symbol: 'USD/JPY', expiry: '-' },
-    'USDCHF': { epic: 'CS.D.USDCHF.MINI.IP', symbol: 'USD/CHF', expiry: '-' },
-    'AUDUSD': { epic: 'CS.D.AUDUSD.MINI.IP', symbol: 'AUD/USD', expiry: '-' },
-    'USDCAD': { epic: 'CS.D.USDCAD.MINI.IP', symbol: 'USD/CAD', expiry: '-' },
-    'NZDUSD': { epic: 'CS.D.NZDUSD.MINI.IP', symbol: 'NZD/USD', expiry: '-' },
+    // Forex (Spot FX - Mini contracts with 10k units, lower margin requirements)
+    // Mini = 10,000 units contract size, better for smaller accounts
+    'EURUSD': { epic: 'CS.D.EURUSD.CEAM.IP', symbol: 'EUR/USD Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'GBPUSD': { epic: 'CS.D.GBPUSD.MINI.IP', symbol: 'GBP/USD Mini', expiry: '-', marginPercent: 0.05, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'USDJPY': { epic: 'CS.D.USDJPY.MINI.IP', symbol: 'USD/JPY Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'USDCHF': { epic: 'CS.D.USDCHF.MINI.IP', symbol: 'USD/CHF Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'AUDUSD': { epic: 'CS.D.AUDUSD.MINI.IP', symbol: 'AUD/USD Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'USDCAD': { epic: 'CS.D.USDCAD.MINI.IP', symbol: 'USD/CAD Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'NZDUSD': { epic: 'CS.D.NZDUSD.MINI.IP', symbol: 'NZD/USD Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'EURGBP': { epic: 'CS.D.EURGBP.MINI.IP', symbol: 'EUR/GBP Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'EURJPY': { epic: 'CS.D.EURJPY.MINI.IP', symbol: 'EUR/JPY Mini', expiry: '-', marginPercent: 0.033, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'GBPJPY': { epic: 'CS.D.GBPJPY.MINI.IP', symbol: 'GBP/JPY Mini', expiry: '-', marginPercent: 0.0333, minDealSize: 0.025, dealSizeIncrement: 0.025 },
+    'CADJPY': { epic: 'CS.D.CADJPY.MINI.IP', symbol: 'CAD/JPY Mini', expiry: '-', marginPercent: 0.0333, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'GBPZAR': { epic: 'CS.D.GBPZAR.MINI.IP', symbol: 'GBP/ZAR Mini', expiry: '-', marginPercent: 0.05, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+    'NZDCAD': { epic: 'CS.D.NZDCAD.MINI.IP', symbol: 'NZD/CAD Mini', expiry: '-', marginPercent: 0.05, minDealSize: 0.1, dealSizeIncrement: 0.01 },
+
+    // Commodities
+    'SILBER': { epic: 'CS.D.CFDSILVER.CFM.IP', symbol: 'Silver', expiry: '-', marginPercent: 0.10, minDealSize: 0.5 },
+    'SILVER': { epic: 'CS.D.CFDSILVER.CFM.IP', symbol: 'Silver', expiry: '-', marginPercent: 0.10, minDealSize: 0.5 },
+    'XAGUSD': { epic: 'CS.D.CFDSILVER.CFM.IP', symbol: 'Silver', expiry: '-', marginPercent: 0.10, minDealSize: 0.5 },
 
     // Crypto (24/7 CFDs)
-    // Primary: Bitcoin (Standard), Fallback: Bitcoin Cash (BCH)
+    // Bitcoin
     'BITCOIN': { 
-      epic: 'CS.D.BITCOIN.CFD.IP', 
-      symbol: 'Bitcoin', 
+      epic: 'CS.D.BTCUSD.CFD.IP',
+      symbol: 'Bitcoin',
       expiry: '-',
+      marginPercent: 0.50, // 50% für Crypto
+      minDealSize: 0.01, // Minimum 0.01 Kontrakte (IG Standard)
+      // Fallback to Bitcoin Cash if Bitcoin is not tradeable
       fallback: {
         epic: 'CS.D.BCHUSD.CFD.IP',
-        symbol: 'Bitcoin Cash (Backup)',
+        symbol: 'Bitcoin Cash',
         expiry: '-'
       }
     },
     'BTC': { 
-      epic: 'CS.D.BITCOIN.CFD.IP', 
-      symbol: 'Bitcoin', 
+      epic: 'CS.D.BTCUSD.CFD.IP',
+      symbol: 'Bitcoin',
       expiry: '-',
+      marginPercent: 0.50,
+      minDealSize: 0.01,
       fallback: {
         epic: 'CS.D.BCHUSD.CFD.IP',
-        symbol: 'Bitcoin Cash (Backup)',
+        symbol: 'Bitcoin Cash',
         expiry: '-'
       }
     },
-    'BITCOIN CASH': { epic: 'CS.D.BCHUSD.CFD.IP', symbol: 'Bitcoin Cash', expiry: '-' },
-    'BCH': { epic: 'CS.D.BCHUSD.CFD.IP', symbol: 'Bitcoin Cash', expiry: '-' },
-    'ETHEREUM': { epic: 'CS.D.ETHUSD.CFD.IP', symbol: 'Ether', expiry: '-' },
-    'ETH': { epic: 'CS.D.ETHUSD.CFD.IP', symbol: 'Ether', expiry: '-' },
-    'SOLANA': { epic: 'CS.D.SOLUSD.CFD.IP', symbol: 'Solana', expiry: '-' },
-    'SOL': { epic: 'CS.D.SOLUSD.CFD.IP', symbol: 'Solana', expiry: '-' },
-    'RIPPLE': { epic: 'CS.D.XRPUSD.CFD.IP', symbol: 'Ripple', expiry: '-' },
-    'XRP': { epic: 'CS.D.XRPUSD.CFD.IP', symbol: 'Ripple', expiry: '-' },
-    'LITECOIN': { epic: 'CS.D.LTCUSD.CFD.IP', symbol: 'Litecoin', expiry: '-' },
-    'LTC': { epic: 'CS.D.LTCUSD.CFD.IP', symbol: 'Litecoin', expiry: '-' },
+    'BITCOIN CASH': { 
+      epic: 'CS.D.BCHUSD.CFD.IP', 
+      symbol: 'Bitcoin Cash', 
+      expiry: '-', 
+      marginPercent: 0.50,
+      minDealSize: 0.2
+    },
+    'BCH': { 
+      epic: 'CS.D.BCHUSD.CFD.IP', 
+      symbol: 'Bitcoin Cash', 
+      expiry: '-', 
+      marginPercent: 0.50,
+      minDealSize: 0.2
+    },
+    'ETHEREUM': { 
+      epic: 'CS.D.ETHUSD.CFD.IP', 
+      symbol: 'Ethereum', 
+      expiry: '-', 
+      marginPercent: 0.50,
+      minDealSize: 0.2
+    },
+    'ETH': { 
+      epic: 'CS.D.ETHUSD.CFD.IP', 
+      symbol: 'Ethereum', 
+      expiry: '-', 
+      marginPercent: 0.50,
+      minDealSize: 0.2
+    },
+    'ETH': { epic: 'CS.D.ETHUSD.CFD.IP', symbol: 'Ether', expiry: '-', marginPercent: 0.50 }, // 50%
+    'SOLANA': { epic: 'CS.D.SOLUSD.CFD.IP', symbol: 'Solana', expiry: '-', marginPercent: 0.50 }, // 50%
+    'SOL': { epic: 'CS.D.SOLUSD.CFD.IP', symbol: 'Solana', expiry: '-', marginPercent: 0.50 }, // 50%
+    'RIPPLE': { epic: 'CS.D.XRPUSD.CFD.IP', symbol: 'Ripple', expiry: '-', marginPercent: 0.50 }, // 50%
+    'XRP': { epic: 'CS.D.XRPUSD.CFD.IP', symbol: 'Ripple', expiry: '-', marginPercent: 0.50 }, // 50%
+    'LITECOIN': { epic: 'CS.D.LTCUSD.CFD.IP', symbol: 'Litecoin', expiry: '-', marginPercent: 0.50 },
+    'LTC': { epic: 'CS.D.LTCUSD.CFD.IP', symbol: 'Litecoin', expiry: '-', marginPercent: 0.50 },
 
-    // US Stocks (24 Hours) - Using correct .CASH.IP EPICs
-    'TESLA': { epic: 'UD.D.TSLA.CASH.IP', symbol: 'Tesla', expiry: '-' },
-    'TSLA': { epic: 'UD.D.TSLA.CASH.IP', symbol: 'Tesla', expiry: '-' },
-    'NETFLIX': { epic: 'UC.D.NFLX.CASH.IP', symbol: 'Netflix', expiry: '-' },
-    'NFLX': { epic: 'UC.D.NFLX.CASH.IP', symbol: 'Netflix', expiry: '-' },
-    'BROADCOM': { epic: 'UA.D.AVGO.CASH.IP', symbol: 'Broadcom', expiry: '-' },
-    'AVGO': { epic: 'UA.D.AVGO.CASH.IP', symbol: 'Broadcom', expiry: '-' },
-    'APPLE': { epic: 'UA.D.AAPL.CASH.IP', symbol: 'Apple', expiry: '-' },
-    'AAPL': { epic: 'UA.D.AAPL.CASH.IP', symbol: 'Apple', expiry: '-' },
-    'AMAZON': { epic: 'UB.D.AMZN.CASH.IP', symbol: 'Amazon', expiry: '-' },
-    'AMZN': { epic: 'UB.D.AMZN.CASH.IP', symbol: 'Amazon', expiry: '-' },
-    'GOOGLE': { epic: 'UC.D.GOOG.CASH.IP', symbol: 'Google', expiry: '-' },
-    'GOOG': { epic: 'UC.D.GOOG.CASH.IP', symbol: 'Google', expiry: '-' },
-    'META': { epic: 'UD.D.META.CASH.IP', symbol: 'Meta', expiry: '-' },
-    'MSFT': { epic: 'UD.D.MSFT.CASH.IP', symbol: 'Microsoft', expiry: '-' },
-    'MICROSOFT': { epic: 'UD.D.MSFT.CASH.IP', symbol: 'Microsoft', expiry: '-' },
-    'NVDA': { epic: 'UD.D.NVDA.CASH.IP', symbol: 'Nvidia', expiry: '-' },
-    'NVIDIA': { epic: 'UD.D.NVDA.CASH.IP', symbol: 'Nvidia', expiry: '-' },
-    'AMD': { epic: 'UA.D.AMD.CASH.IP', symbol: 'AMD', expiry: '-' },
-    'INTEL': { epic: 'UC.D.INTC.CASH.IP', symbol: 'Intel', expiry: '-' },
-    'INTC': { epic: 'UC.D.INTC.CASH.IP', symbol: 'Intel', expiry: '-' },
-    'PAYPAL': { epic: 'UD.D.PYPL.CASH.IP', symbol: 'PayPal', expiry: '-' },
-    'PYPL': { epic: 'UD.D.PYPL.CASH.IP', symbol: 'PayPal', expiry: '-' },
-    'ADOBE': { epic: 'UA.D.ADBE.CASH.IP', symbol: 'Adobe', expiry: '-' },
-    'ADBE': { epic: 'UA.D.ADBE.CASH.IP', symbol: 'Adobe', expiry: '-' },
-    'SHOPIFY': { epic: 'UC.D.SHOP.CASH.IP', symbol: 'Shopify', expiry: '-' },
-    'SHOP': { epic: 'UC.D.SHOP.CASH.IP', symbol: 'Shopify', expiry: '-' },
-    'UBER': { epic: 'UD.D.UBER.CASH.IP', symbol: 'Uber', expiry: '-' },
-    'COINBASE': { epic: 'UB.D.COIN.CASH.IP', symbol: 'Coinbase', expiry: '-' },
-    'COIN': { epic: 'UB.D.COIN.CASH.IP', symbol: 'Coinbase', expiry: '-' },
+    // US Stocks (24 Hours) - Real margins from IG API (all 20%!)
+    // DISABLED due to high commissions (10$ per trade)
+    'TESLA': { epic: 'UD.D.TSLA.CASH.IP', symbol: 'Tesla', expiry: '-', marginPercent: 0.20, disabled: true },
+    'TSLA': { epic: 'UD.D.TSLA.CASH.IP', symbol: 'Tesla', expiry: '-', marginPercent: 0.20, disabled: true },
+    'NETFLIX': { epic: 'UC.D.NFLX.CASH.IP', symbol: 'Netflix', expiry: '-', marginPercent: 0.20, disabled: true },
+    'NFLX': { epic: 'UC.D.NFLX.CASH.IP', symbol: 'Netflix', expiry: '-', marginPercent: 0.20, disabled: true },
+    'BROADCOM': { epic: 'UA.D.AVGO.CASH.IP', symbol: 'Broadcom', expiry: '-', marginPercent: 0.20, disabled: true },
+    'AVGO': { epic: 'UA.D.AVGO.CASH.IP', symbol: 'Broadcom', expiry: '-', marginPercent: 0.20, disabled: true },
+    'APPLE': { epic: 'UA.D.AAPL.CASH.IP', symbol: 'Apple', expiry: '-', marginPercent: 0.20, disabled: true },
+    'AAPL': { epic: 'UA.D.AAPL.CASH.IP', symbol: 'Apple', expiry: '-', marginPercent: 0.20, disabled: true },
+    'AMAZON': { epic: 'UB.D.AMZN.CASH.IP', symbol: 'Amazon', expiry: '-', marginPercent: 0.20, disabled: true },
+    'AMZN': { epic: 'UB.D.AMZN.CASH.IP', symbol: 'Amazon', expiry: '-', marginPercent: 0.20, disabled: true },
+    'GOOGLE': { epic: 'UC.D.GOOG.CASH.IP', symbol: 'Google', expiry: '-', marginPercent: 0.20, disabled: true },
+    'GOOG': { epic: 'UC.D.GOOG.CASH.IP', symbol: 'Google', expiry: '-', marginPercent: 0.20, disabled: true },
+    'META': { epic: 'UD.D.META.CASH.IP', symbol: 'Meta', expiry: '-', marginPercent: 0.20, disabled: true },
+    'MSFT': { epic: 'UD.D.MSFT.CASH.IP', symbol: 'Microsoft', expiry: '-', marginPercent: 0.20, disabled: true },
+    'MICROSOFT': { epic: 'UD.D.MSFT.CASH.IP', symbol: 'Microsoft', expiry: '-', marginPercent: 0.20, disabled: true },
+    'NVDA': { epic: 'UC.D.NVDA.CASH.IP', symbol: 'Nvidia', expiry: '-', marginPercent: 0.20, disabled: true },
+    'NVIDIA': { epic: 'UC.D.NVDA.CASH.IP', symbol: 'Nvidia', expiry: '-', marginPercent: 0.20, disabled: true },
+    'AMD': { epic: 'UA.D.AMD.CASH.IP', symbol: 'AMD', expiry: '-', marginPercent: 0.20, disabled: true },
+    'INTEL': { epic: 'UC.D.INTC.CASH.IP', symbol: 'Intel', expiry: '-', marginPercent: 0.20, disabled: true },
+    'INTC': { epic: 'UC.D.INTC.CASH.IP', symbol: 'Intel', expiry: '-', marginPercent: 0.20, disabled: true },
+    'PAYPAL': { epic: 'UD.D.PYPL.CASH.IP', symbol: 'PayPal', expiry: '-', marginPercent: 0.20, disabled: true },
+    'PYPL': { epic: 'UD.D.PYPL.CASH.IP', symbol: 'PayPal', expiry: '-', marginPercent: 0.20, disabled: true },
+    'ADOBE': { epic: 'UA.D.ADBE.CASH.IP', symbol: 'Adobe', expiry: '-', marginPercent: 0.20, disabled: true },
+    'ADBE': { epic: 'UA.D.ADBE.CASH.IP', symbol: 'Adobe', expiry: '-', marginPercent: 0.20, disabled: true },
+    'SHOPIFY': { epic: 'UC.D.SHOP.CASH.IP', symbol: 'Shopify', expiry: '-', marginPercent: 0.20, disabled: true },
+    'SHOP': { epic: 'UC.D.SHOP.CASH.IP', symbol: 'Shopify', expiry: '-', marginPercent: 0.20, disabled: true },
+    'UBER': { epic: 'UD.D.UBER.CASH.IP', symbol: 'Uber', expiry: '-', marginPercent: 0.20, disabled: true },
+    'COINBASE': { epic: 'UB.D.COIN.CASH.IP', symbol: 'Coinbase', expiry: '-', marginPercent: 0.20, disabled: true },
+    'COIN': { epic: 'UB.D.COIN.CASH.IP', symbol: 'Coinbase', expiry: '-', marginPercent: 0.20, disabled: true },
+    'GITLAB': { epic: 'UA.D.GTLB.CASH.IP', symbol: 'GitLab', expiry: '-', marginPercent: 0.20, disabled: true },
+    'GTLB': { epic: 'UA.D.GTLB.CASH.IP', symbol: 'GitLab', expiry: '-', marginPercent: 0.20, disabled: true },
     // ...weitere gängige Aktien nach Bedarf ergänzen
   };
 
   // Fallback: Wenn Instrument wie ein US-Ticker aussieht, generiere Epic automatisch
   // Format: U[A-D].D.[TICKER].CASH.IP für US-Aktien (24 Hours)
-  if (!mapping[instrument] && /^[A-Z]{2,6}$/.test(instrument)) {
+  if (!mapping[normalizedInstrument] && /^[A-Z]{2,6}$/.test(normalizedInstrument)) {
     // Erste Buchstabe basierend auf Ticker: A-G=UA, H-N=UB, O-T=UC, U-Z=UD
-    const firstLetter = instrument.charAt(0);
+    const firstLetter = normalizedInstrument.charAt(0);
     let prefix = 'UD'; // Default
     if (firstLetter >= 'A' && firstLetter <= 'G') prefix = 'UA';
     else if (firstLetter >= 'H' && firstLetter <= 'N') prefix = 'UB';
     else if (firstLetter >= 'O' && firstLetter <= 'T') prefix = 'UC';
     
     return {
-      epic: `${prefix}.D.${instrument}.CASH.IP`,
-      symbol: instrument,
-      expiry: '-'
+      epic: `${prefix}.D.${normalizedInstrument}.CASH.IP`,
+      symbol: normalizedInstrument,
+      expiry: '-',
+      disabled: true // DISABLED due to high commissions
     };
   }
 
-  return mapping[instrument] || {
+  return mapping[normalizedInstrument] || {
     epic: null,
     symbol: instrument,
     expiry: '-'
   };
+}
+
+/**
+ * Get the appropriate instrument mapping with automatic weekend detection
+ * @param {string} instrument - Instrument name
+ * @returns {Object} - IG Market data with epic, symbol, expiry
+ */
+function getInstrumentMapping(instrument) {
+  const baseMapping = mapInstrumentToIG(instrument);
+  
+  // If it's weekend and instrument has a weekend fallback, use it
+  // BUT only if the fallback is explicitly a "Weekend" market (like Indices)
+  // We don't want to force fallback for Crypto (Bitcoin -> Bitcoin Cash) just because it's weekend
+  const isWeekendFallback = baseMapping.fallback && baseMapping.fallback.symbol.includes('Weekend');
+  
+  if (isWeekend() && isWeekendFallback) {
+    console.log(`🗓️  Weekend detected - using ${baseMapping.fallback.symbol} instead of ${baseMapping.symbol}`);
+    return {
+      ...baseMapping.fallback,
+      marginPercent: baseMapping.marginPercent, // Keep original margin
+      minDealSize: baseMapping.minDealSize,
+      isWeekendContract: true
+    };
+  }
+  
+  return baseMapping;
 }
 
 /**
@@ -559,8 +689,8 @@ function mapInstrumentToMT5Symbol(instrument) {
   return ig.symbol;
 }
 
-// Export the new IG mapping function
-export { mapInstrumentToIG };
+// Export the mapping functions
+export { mapInstrumentToIG, getInstrumentMapping };
 
 /**
  * Validate if a parsed trend has the minimum required data

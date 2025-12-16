@@ -334,11 +334,12 @@
         }
         
         .event {
-            border-left: 4px solid #667eea;
-            padding: 15px;
-            margin-bottom: 10px;
+            border-left: 3px solid #667eea;
+            padding: 8px 12px;
+            margin-bottom: 8px;
             background: #f9f9f9;
-            border-radius: 5px;
+            border-radius: 4px;
+            font-size: 13px;
         }
         
         .event.signal {
@@ -376,15 +377,16 @@
         
         .signal-details {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-            margin-top: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 6px;
+            margin-top: 6px;
         }
         
         .signal-detail {
             background: white;
-            padding: 8px;
-            border-radius: 5px;
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-size: 12px;
         }
         
         .signal-detail strong {
@@ -494,6 +496,15 @@
             </div>
             
             <div class="stat-card">
+                <h3>Account Info</h3>
+                <div class="value" id="accountBalance">-- €</div>
+                <div class="subtext">
+                    Margin: <span id="accountMargin">-- €</span> | 
+                    Verfügbar: <span id="accountAvailable">-- €</span>
+                </div>
+            </div>
+            
+            <div class="stat-card">
                 <h3>Uptime</h3>
                 <div class="value" id="uptime">0m</div>
                 <div class="subtext" id="startTime">Gestartet: ...</div>
@@ -512,6 +523,15 @@
                 </div>
                 <div class="toggle-info">Trades auf IG Markets</div>
             </div>
+            
+            <div class="stat-card">
+                <h3>Risk per Trade (€)</h3>
+                <div style="margin-top: 10px;">
+                    <input type="number" id="riskPerTrade" min="10" max="1000" step="10" value="100" 
+                           style="width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #e5e7eb; font-size: 18px; font-weight: bold; text-align: center;">
+                </div>
+                <div class="subtext" style="margin-top: 8px;">Euro pro Trade (Margin)</div>
+            </div>
         </div>
         
         <div class="positions-section">
@@ -524,21 +544,47 @@
                     <tr>
                         <th>Instrument</th>
                         <th>Richtung</th>
-                        <th>Größe</th>
-                        <th>Investment</th>
-                        <th>Eröffnung</th>
+                        <th>Kontraktgröße</th>
+                        <th>Margin</th>
+                        <th>Start Price</th>
                         <th>Aktuell</th>
                         <th>P&L</th>
-                        <th>Stop Loss</th>
-                        <th>Take Profit</th>
-                        <th>Gekauft am</th>
+                        <th>SL</th>
+                        <th>TP</th>
+                        <th>Eröffnet am</th>
                         <th>Deal ID</th>
                         <th>Aktion</th>
                     </tr>
                 </thead>
                 <tbody id="positionsBody">
                     <tr>
-                        <td colspan="12" class="empty-state">Keine offenen Positionen</td>
+                        <td colspan="11" class="empty-state">Keine offenen Positionen</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="positions-section">
+            <h2>History (letzte 30 Aktionen)</h2>
+            <table class="positions-table" id="closedPositionsTable">
+                <thead>
+                    <tr>
+                        <th>Instrument</th>
+                        <th>Richtung</th>
+                        <th>Kontraktgröße</th>
+                        <th>Start Price</th>
+                        <th>Schlusskurs</th>
+                        <th>P&L</th>
+                        <th>SL</th>
+                        <th>TP</th>
+                        <th>Eröffnet am</th>
+                        <th>Geschlossen am</th>
+                        <th>Deal ID</th>
+                    </tr>
+                </thead>
+                <tbody id="closedPositionsBody">
+                    <tr>
+                        <td colspan="11" class="empty-state">Keine geschlossenen Positionen</td>
                     </tr>
                 </tbody>
             </table>
@@ -582,6 +628,17 @@
                     hour: '2-digit', 
                     minute: '2-digit' 
                 });
+        });
+        
+        // Update account info
+        socket.on('accountInfo', (info) => {
+            console.log('💰 Received account info:', info);
+            
+            if (info && info.balance !== undefined) {
+                document.getElementById('accountBalance').textContent = info.balance.toFixed(2) + '€';
+                document.getElementById('accountMargin').textContent = info.deposit.toFixed(2) + '€';
+                document.getElementById('accountAvailable').textContent = info.available.toFixed(2) + '€';
+            }
         });
         
         // Handle new signals
@@ -687,12 +744,12 @@
                         <div class="signal-detail">
                             <strong>Symbol:</strong> ${data.symbol || 'N/A'}
                         </div>
-                        ${data.level ? `<div class="signal-detail"><strong>Preis:</strong> ${data.level} ${data.currency || ''}</div>` : (data.entryPrice ? `<div class="signal-detail"><strong>Signal Preis:</strong> ${data.entryPrice}</div>` : '')}
+                        ${data.level ? `<div class="signal-detail"><strong>Preis:</strong> ${data.level} ${data.currency || ''}</div>` : (data.entryPrice ? `<div class="signal-detail"><strong>Preis:</strong> ${data.entryPrice}</div>` : '')}
                         ${data.optionType ? `<div class="signal-detail"><strong>Option:</strong> ${data.optionType} ${data.strikePrice || ''}</div>` : ''}
-                        ${data.riskAmount ? `<div class="signal-detail"><strong>Investment:</strong> €${data.riskAmount.toFixed(2)}</div>` : ''}
+                        ${data.size ? `<div class="signal-detail"><strong>Größe:</strong> ${data.size}</div>` : ''}
+                        ${data.margin ? `<div class="signal-detail"><strong>Margin:</strong> ${data.margin.toFixed(2)}€</div>` : ''}
                         ${data.stopLoss ? `<div class="signal-detail"><strong>Neuer SL:</strong> ${data.stopLoss}</div>` : ''}
                         ${data.profit !== undefined ? `<div class="signal-detail"><strong>Profit:</strong> ${data.profit > 0 ? '+' : ''}${data.profit}€</div>` : ''}
-                        ${data.size ? `<div class="signal-detail"><strong>Größe:</strong> ${data.size}</div>` : ''}
                         ${data.dealId ? `<div class="signal-detail"><strong>Deal ID:</strong> ${data.dealId}</div>` : ''}
                         ${data.reason && data.reason !== 'SUCCESS' ? `<div class="signal-detail" style="grid-column: 1/-1;"><strong>Grund:</strong> ${data.reason}</div>` : ''}
                         ${data.message && data.message !== data.reason && !data.message.includes('Trade executed via IG Markets API') ? `<div class="signal-detail" style="grid-column: 1/-1;"><strong>Nachricht:</strong> ${data.message}</div>` : ''}
@@ -802,6 +859,41 @@
             updatePositionsTable(positions);
         });
         
+        // Margin updates
+        socket.on('margin', (marginData) => {
+            const marginCard = document.querySelector('.stat-card:has(#openMargin)');
+            if (marginCard) {
+                const valueEl = marginCard.querySelector('#openMargin');
+                const subtextEl = marginCard.querySelector('.subtext');
+                
+                if (valueEl) {
+                    valueEl.textContent = marginData.available.toFixed(2) + '€';
+                    valueEl.style.color = marginData.available > 100 ? '#10b981' : '#ef4444';
+                }
+                if (subtextEl) {
+                    subtextEl.textContent = `Gebunden: ${marginData.used.toFixed(2)}€ / Total: ${marginData.total.toFixed(2)}€`;
+                }
+            }
+        });
+        
+        // Closed positions updates
+        socket.on('closedPositions', (closedPos) => {
+            updateClosedPositionsTable(closedPos);
+        });
+        
+        // Trading status changed from server
+        socket.on('tradingStatusChanged', (data) => {
+            tradingToggle.checked = data.enabled;
+            updateToggleDisplay();
+            console.log('Trading status updated from server:', data.enabled);
+        });
+        
+        // Risk per trade changed from server
+        socket.on('riskPerTradeChanged', (data) => {
+            riskPerTradeInput.value = data.risk;
+            console.log('Risk per trade updated from server:', data.risk);
+        });
+        
         function updateServiceStatus(data) {
             // Telegram status
             const telegramCard = document.getElementById('telegramStatus');
@@ -841,22 +933,44 @@
             refresh.textContent = 'Gerade aktualisiert';
             
             if (!positions || positions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" class="empty-state">Keine offenen Positionen</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="empty-state">Keine offenen Positionen</td></tr>';
                 return;
             }
+            
+            let totalMargin = 0;
             
             tbody.innerHTML = positions.map(pos => {
                 const direction = pos.direction === 'BUY' ? 
                     '<span class="direction-buy">LONG ↗</span>' : 
                     '<span class="direction-sell">SHORT ↘</span>';
                 
-                const pnl = pos.profit || 0;
-                const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-                const pnlText = pnl >= 0 ? `+${pnl.toFixed(2)}€` : `${pnl.toFixed(2)}€`;
+                const pnl = pos.profit;
+                let pnlText = 'N/A';
+                let pnlClass = '';
                 
-                const investment = pos.investment || (pos.size * pos.openLevel);
-                const investmentText = investment ? `${investment.toFixed(2)} ${pos.currency || ''}` : '--';
+                if (typeof pnl === 'number') {
+                    pnlClass = pnl > 0 ? 'pnl-positive' : (pnl < 0 ? 'pnl-negative' : '');
+                    pnlText = pnl >= 0 ? `+${pnl.toFixed(2)}€` : `${pnl.toFixed(2)}€`;
+                } else {
+                    pnlText = pnl || 'N/A';
+                }
+
+                if (pos.isStale) {
+                    pnlText = '~' + pnlText;
+                    // If stale (estimated), use a neutral color or keep the sign color but maybe dimmer?
+                    // For now, let's keep the sign color but add the tilde.
+                }
                 
+                // Calculate risk based on position size and SL distance
+                
+                // Calculate risk based on position size and SL distance
+                const riskAmount = pos.riskAmount || '--';
+                const riskText = typeof riskAmount === 'number' ? `${riskAmount.toFixed(2)}€` : riskAmount;
+                
+                // Margin display
+                const margin = pos.margin || 0;
+                const marginText = typeof margin === 'number' ? `${margin.toFixed(2)}€` : '--';
+
                 // Format created datetime
                 let createdText = '--';
                 if (pos.createdDatetime) {
@@ -864,10 +978,8 @@
                     createdText = createdDate.toLocaleString('de-DE', {
                         day: '2-digit',
                         month: '2-digit',
-                        year: 'numeric',
                         hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
+                        minute: '2-digit'
                     });
                 }
                 
@@ -876,9 +988,9 @@
                         <td><strong>${pos.instrumentName}</strong></td>
                         <td>${direction}</td>
                         <td>${pos.size}</td>
-                        <td>${investmentText}</td>
+                        <td>${marginText}</td>
                         <td>${pos.openLevel}</td>
-                        <td>${pos.currentLevel || '--'}</td>
+                        <td>${pos.isStale ? '<span style="color:gray" title="Live price unavailable - showing entry price">~</span>' : ''}${pos.currentLevel || '--'}</td>
                         <td class="${pnlClass}">${pnlText}</td>
                         <td>${pos.stopLevel || '--'}</td>
                         <td>${pos.limitLevel || '--'}</td>
@@ -889,6 +1001,56 @@
                                 🔴 Verkaufen
                             </button>
                         </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            // Update total margin display
+            document.getElementById('totalMargin').textContent = totalMargin.toFixed(2) + '€';
+        }
+        
+        function updateClosedPositionsTable(closedPos) {
+            const tbody = document.getElementById('closedPositionsBody');
+            
+            if (!closedPos || closedPos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Keine geschlossenen Positionen</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = closedPos.map(pos => {
+                const profit = pos.profit || 0;
+                const profitClass = profit >= 0 ? 'pnl-positive' : 'pnl-negative';
+                const profitText = profit >= 0 ? `+${profit.toFixed(2)}€` : `${profit.toFixed(2)}€`;
+                
+                const direction = pos.direction === 'BUY' ? 
+                    '<span class="direction-buy">LONG ↗</span>' : 
+                    '<span class="direction-sell">SHORT ↘</span>';
+                
+                const createdText = pos.createdDatetime ? 
+                    new Date(pos.createdDatetime).toLocaleString('de-DE', {
+                        day: '2-digit', month: '2-digit',
+                        hour: '2-digit', minute: '2-digit'
+                    }) : '--';
+                    
+                const closedText = pos.closedAt ? 
+                    new Date(pos.closedAt).toLocaleString('de-DE', {
+                        day: '2-digit', month: '2-digit',
+                        hour: '2-digit', minute: '2-digit'
+                    }) : '--';
+                
+                return `
+                    <tr>
+                        <td><strong>${pos.instrumentName || pos.symbol || pos.epic}</strong></td>
+                        <td>${direction}</td>
+                        <td>${pos.size || '--'}</td>
+                        <td>${pos.openLevel || '--'}</td>
+                        <td>${pos.closeLevel || '--'}</td>
+                        <td class="${profitClass}">${profitText}</td>
+                        <td>${pos.stopLevel || '--'}</td>
+                        <td>${pos.limitLevel || '--'}</td>
+                        <td style="font-size: 11px;">${createdText}</td>
+                        <td style="font-size: 11px;">${closedText}</td>
+                        <td style="font-family: monospace; font-size: 11px;">${pos.dealId}</td>
                     </tr>
                 `;
             }).join('');
@@ -922,6 +1084,7 @@
         // Auto-refresh positions every 30 seconds
         setInterval(() => {
             socket.emit('requestPositions');
+            socket.emit('requestClosedPositions');
             const refresh = document.getElementById('positionsRefresh');
             const lastUpdate = refresh.textContent;
             if (lastUpdate.includes('Gerade')) {
@@ -929,8 +1092,11 @@
             }
         }, 30000);
         
-        // Request initial positions
-        setTimeout(() => socket.emit('requestPositions'), 1000);
+        // Request initial positions and closed positions
+        setTimeout(() => {
+            socket.emit('requestPositions');
+            socket.emit('requestClosedPositions');
+        }, 1000);
         
         // Trading toggle functionality
         const tradingToggle = document.getElementById('tradingToggle');
@@ -944,7 +1110,13 @@
             updateToggleDisplay();
         }
         
-        // Emit initial state to server
+        // Risk per trade input handler
+        const riskPerTradeInput = document.getElementById('riskPerTrade');
+        
+        // Risk value will be loaded from server on connect
+        // No localStorage - all clients see the same value from config.json
+        
+        // Emit initial trading state to server (will be overridden by server's config)
         socket.emit('setTradingEnabled', tradingToggle.checked);
         
         tradingToggle.addEventListener('change', () => {
@@ -965,6 +1137,21 @@
             } else {
                 alert('⚠️ Trading deaktiviert!\n\nSignale werden nur geloggt, keine Trades auf IG Markets.');
             }
+        });
+        
+        riskPerTradeInput.addEventListener('change', () => {
+            const newRisk = parseFloat(riskPerTradeInput.value);
+            if (isNaN(newRisk) || newRisk < 10) {
+                alert('⚠️ Ungültiger Risk-Betrag! Mindestens 10€');
+                // Don't set fallback - server will send correct value
+                socket.emit('setRiskPerTrade', 100);
+                return;
+            }
+            
+            // Send to server (will be saved to config.json and broadcast to all clients)
+            socket.emit('setRiskPerTrade', newRisk);
+            
+            console.log(`Risk per trade updated to ${newRisk}€`);
         });
         
         function updateToggleDisplay() {

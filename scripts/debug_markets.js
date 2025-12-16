@@ -1,4 +1,4 @@
-import { igApi } from './src/igApi.js';
+import { igApi } from '../src/igApi.js';
 import fetch from 'node-fetch';
 
 async function debugMarkets() {

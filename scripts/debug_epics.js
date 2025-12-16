@@ -1,5 +1,5 @@
 
-import { igApi } from './src/igApi.js';
+import { igApi } from '../src/igApi.js';
 
 async function checkEpics() {
     console.log('Checking EPICs...');
